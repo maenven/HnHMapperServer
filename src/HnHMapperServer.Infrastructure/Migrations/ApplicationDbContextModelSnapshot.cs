@@ -723,6 +723,48 @@ namespace HnHMapperServer.Infrastructure.Migrations
                     b.ToTable("HmapSources");
                 });
 
+            modelBuilder.Entity("HnHMapperServer.Infrastructure.Data.KinSecretEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CharName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Genus")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Secret")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("TenantId", "Genus", "CharName")
+                        .IsUnique();
+
+                    b.ToTable("KinSecrets");
+                });
+
             modelBuilder.Entity("HnHMapperServer.Infrastructure.Data.MapInfoEntity", b =>
                 {
                     b.Property<int>("Id")
@@ -2201,6 +2243,21 @@ namespace HnHMapperServer.Infrastructure.Migrations
                     b.HasOne("HnHMapperServer.Core.Models.TenantEntity", null)
                         .WithMany()
                         .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("HnHMapperServer.Infrastructure.Data.KinSecretEntity", b =>
+                {
+                    b.HasOne("HnHMapperServer.Core.Models.TenantEntity", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("HnHMapperServer.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

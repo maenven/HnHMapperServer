@@ -205,6 +205,9 @@ builder.Services.AddScoped<IFoodCatalogService, FoodCatalogService>();
 builder.Services.AddScoped<ICookbookValueBackfill, CookbookValueBackfill>();
 builder.Services.AddScoped<IFoodPanelService, FoodPanelService>();
 
+// Auto Kin hearth secrets shared between tenant admins' game clients
+builder.Services.AddScoped<IKinSecretService, KinSecretService>();
+
 // Register memory cache for preview URL signing service
 builder.Services.AddMemoryCache();
 

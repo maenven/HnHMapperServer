@@ -93,6 +93,9 @@ public sealed class ApplicationDbContext : IdentityDbContext<ApplicationUser, Id
     public DbSet<FoodPanelEntity> FoodPanels => Set<FoodPanelEntity>();
     public DbSet<FoodPanelItemEntity> FoodPanelItems => Set<FoodPanelItemEntity>();
 
+    // Auto Kin: hearth secrets shared between a tenant's admins (tenant-scoped)
+    public DbSet<KinSecretEntity> KinSecrets => Set<KinSecretEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -1098,6 +1101,32 @@ public sealed class ApplicationDbContext : IdentityDbContext<ApplicationUser, Id
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        // Auto Kin hearth secrets: one row per (tenant, world, character).
+        modelBuilder.Entity<KinSecretEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.TenantId).IsRequired();
+            entity.Property(e => e.Genus).IsRequired().HasMaxLength(GameWorlds.MaxGenusLength);
+            entity.Property(e => e.CharName).IsRequired().HasMaxLength(KinSecretEntity.MaxCharNameLength);
+            entity.Property(e => e.Secret).IsRequired().HasMaxLength(KinSecretEntity.MaxSecretLength);
+            entity.Property(e => e.UserId).IsRequired();
+            entity.Property(e => e.UpdatedAt).IsRequired();
+
+            entity.HasIndex(e => new { e.TenantId, e.Genus, e.CharName }).IsUnique();
+            entity.HasIndex(e => e.UserId);
+
+            entity.HasOne<TenantEntity>()
+                .WithMany()
+                .HasForeignKey(e => e.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // A deleted account takes its characters' secrets with it.
+            entity.HasOne<ApplicationUser>()
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         // Global query filters for automatic tenant isolation
         // These filters automatically add "WHERE TenantId = {currentTenantId}" to all queries
         // GetCurrentTenantId() is evaluated at query time (not model creation time)
@@ -1154,6 +1183,9 @@ public sealed class ApplicationDbContext : IdentityDbContext<ApplicationUser, Id
 
         modelBuilder.Entity<OverlayOffsetEntity>()
             .HasQueryFilter(o => o.TenantId == GetCurrentTenantId());
+
+        modelBuilder.Entity<KinSecretEntity>()
+            .HasQueryFilter(k => k.TenantId == GetCurrentTenantId());
     }
 }
 
@@ -2489,4 +2521,34 @@ public sealed class FoodWorldFep
     public int Tier { get; set; }
 
     public decimal Value { get; set; }
+}
+
+/// <summary>
+/// A character's hearth secret, shared through the game client's Auto Kin feature
+/// (POST /client/{token}/kinSecret). Every tenant admin's client reads the tenant's rows
+/// for its world and adds each character as kin. The secret is a game credential: it is
+/// only ever returned to the tenant's admins.
+/// </summary>
+public sealed class KinSecretEntity
+{
+    public const int MaxCharNameLength = 64;
+    public const int MaxSecretLength = 64;
+
+    public int Id { get; set; }
+
+    public string TenantId { get; set; } = string.Empty;
+
+    /// <summary>Game world hash the character lives in (see GameWorlds).</summary>
+    public string Genus { get; set; } = string.Empty;
+
+    /// <summary>Character name as the game client reports it.</summary>
+    public string CharName { get; set; } = string.Empty;
+
+    /// <summary>The character's hearth secret, as entered in the game's Kith &amp; Kin window.</summary>
+    public string Secret { get; set; } = string.Empty;
+
+    /// <summary>Web user whose token published the row (AspNetUsers.Id).</summary>
+    public string UserId { get; set; } = string.Empty;
+
+    public DateTime UpdatedAt { get; set; }
 }

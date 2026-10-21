@@ -181,6 +181,8 @@ All endpoints tenant-scoped and backward compatible:
 | `POST /client/{token}/markerDelete` | Marker deletion |
 | `POST /client/{token}/markerUpdate` | Marker status updates |
 | `POST /client/{token}/markerReadyTime` | Harvest timer updates |
+| `POST /client/{token}/kinSecret` | Auto Kin: store/clear a character's hearth secret (TenantAdmin only) |
+| `GET /client/{token}/kinSecrets?genus=` | Auto Kin: the tenant's admin hearth secrets for a world (TenantAdmin only, never output-cached) |
 
 ### ✅ Map Viewing & Real-time Updates
 

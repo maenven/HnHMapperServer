@@ -106,6 +106,9 @@ public static partial class ClientEndpoints
         group.MapPost("/markerDelete", MarkerDelete).DisableAntiforgery();
         group.MapPost("/markerUpdate", MarkerUpdate).DisableAntiforgery();
         group.MapPost("/markerReadyTime", MarkerReadyTime).DisableAntiforgery();
+        group.MapPost("/kinSecret", KinSecretUpload).DisableAntiforgery(); // Auto Kin (Hurricane-H4D)
+        // Never served from the output cache: the client must see a secret right after it is published.
+        group.MapGet("/kinSecrets", KinSecretList).CacheOutput(policy => policy.NoCache());
         group.MapGet("", RedirectToMap);
     }
 
@@ -245,6 +248,113 @@ public static partial class ClientEndpoints
         }
 
         return records;
+    }
+
+    // Auto Kin bodies are three short strings.
+    private const long MaxKinSecretBodyBytes = 4 * 1024;
+
+    /// <summary>
+    /// POST /client/{token}/kinSecret
+    /// Auto Kin: stores the character's hearth secret, body { genus, charName, secret }; an empty
+    /// secret deletes it. Only TenantAdmins of the token's tenant are in the pool (403 otherwise).
+    /// </summary>
+    private static async Task<IResult> KinSecretUpload(
+        [FromRoute] string token,
+        HttpContext context,
+        ApplicationDbContext db,
+        ITokenService tokenService,
+        IKinSecretService kinSecretService,
+        ILogger<Program> logger)
+    {
+        if (!await ClientTokenHelpers.HasUploadAsync(context, db, tokenService, token, logger))
+        {
+            return Results.Unauthorized();
+        }
+
+        var tenantId = context.Items["TenantId"] as string;
+        var userId = context.Items["UserId"] as string;
+        if (string.IsNullOrEmpty(tenantId) || string.IsNullOrEmpty(userId))
+        {
+            return Results.Unauthorized();
+        }
+
+        if (!await kinSecretService.IsPoolMemberAsync(tenantId, userId))
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        var bodySizeFeature = context.Features.Get<IHttpMaxRequestBodySizeFeature>();
+        if (bodySizeFeature is { IsReadOnly: false })
+        {
+            bodySizeFeature.MaxRequestBodySize = MaxKinSecretBodyBytes;
+        }
+
+        KinSecretUploadDto? upload;
+        try
+        {
+            upload = await ReadJsonBodyAsync<KinSecretUploadDto>(context, logger, "kinSecret");
+        }
+        catch (BadHttpRequestException)
+        {
+            return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+        }
+
+        if (upload == null)
+        {
+            return Results.BadRequest(new { error = "Invalid kin secret payload" });
+        }
+
+        try
+        {
+            await kinSecretService.SetSecretAsync(tenantId, userId, upload);
+        }
+        catch (ArgumentException error)
+        {
+            return Results.BadRequest(new { error = error.Message });
+        }
+
+        return Results.NoContent();
+    }
+
+    /// <summary>
+    /// GET /client/{token}/kinSecrets?genus=...
+    /// Auto Kin: every admin character's hearth secret in the tenant for that world, as
+    /// [{ charName, secret, updatedAt }]. TenantAdmins only (403 otherwise).
+    /// </summary>
+    private static async Task<IResult> KinSecretList(
+        [FromRoute] string token,
+        [FromQuery] string? genus,
+        HttpContext context,
+        ApplicationDbContext db,
+        ITokenService tokenService,
+        IKinSecretService kinSecretService,
+        ILogger<Program> logger)
+    {
+        if (!await ClientTokenHelpers.HasUploadAsync(context, db, tokenService, token, logger))
+        {
+            return Results.Unauthorized();
+        }
+
+        var tenantId = context.Items["TenantId"] as string;
+        var userId = context.Items["UserId"] as string;
+        if (string.IsNullOrEmpty(tenantId) || string.IsNullOrEmpty(userId))
+        {
+            return Results.Unauthorized();
+        }
+
+        if (!await kinSecretService.IsPoolMemberAsync(tenantId, userId))
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        try
+        {
+            return Results.Json(await kinSecretService.GetSecretsAsync(tenantId, genus));
+        }
+        catch (ArgumentException error)
+        {
+            return Results.BadRequest(new { error = error.Message });
+        }
     }
 
     private static IResult CheckVersion([FromRoute] string token, [FromQuery] string version)
